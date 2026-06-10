@@ -1,4 +1,5 @@
-// ========== GLOBAL VARIABLES ==========
+// script.js (diperbaiki, pastikan tombol Terdekat berfungsi)
+
 let currentUser = null;
 let allBanks = [];
 let laporanList = [];
@@ -8,20 +9,6 @@ let nextBankId = 10;
 let nextLaporanId = 6;
 let nextKomunitasId = 6;
 
-let trackingMap = null;
-let heroMap = null;
-let miniMap = null;
-let miniMarker = null;
-
-let currentFilterBank = "all";
-let currentFilterLap = "semua";
-let currentKomFilter = "all";
-let userLatBank = null, userLngBank = null;
-let userLatKom = null, userLngKom = null;
-
-let currentFotoBase64 = null;
-
-// ========== DATA DEFAULT ==========
 const defaultBanks = [
     { id: 1, name: "Bank Sampah Induk Medan", address: "Jl. Gatot Subroto No. 12, Medan Petisah", lat: 3.5875, lng: 98.6712, tonPerMonth: 4.5, is3RActive: true, deskripsi: "Bank utama kota", isCustom: false },
     { id: 2, name: "Bank Sampah Berseri", address: "Jl. Sei Batang Hari No. 8, Medan Baru", lat: 3.6012, lng: 98.6834, tonPerMonth: 2.1, is3RActive: false, deskripsi: "Plastik & kertas", isCustom: false },
@@ -50,7 +37,6 @@ const defaultLaporan = [
     { id: 5, nama: "Rudi", lokasi: "Jl. Gatot Subroto No. 20", jenisSampah: "Limbah", deskripsi: "Limbah di bahu jalan", lat: 3.587, lng: 98.671, status: "diproses", tanggal: new Date(Date.now() - 48*3600000).toISOString(), judul: "Limbah di Jl. Gatot Subroto", fotoBase64: null }
 ];
 
-// ========== LOAD & SAVE ==========
 function loadData() {
     const storedBanks = localStorage.getItem("userAddedBanks");
     if(storedBanks) { const custom = JSON.parse(storedBanks); allBanks = [...defaultBanks, ...custom]; if(custom.length) nextBankId = Math.max(...custom.map(b=>b.id),10)+1; }
@@ -70,12 +56,29 @@ function saveAllData() {
     localStorage.setItem("laporanWaste", JSON.stringify(laporanList));
     localStorage.setItem("komunitasData", JSON.stringify(komunitasList));
 }
+function getUsers() { return JSON.parse(localStorage.getItem("bankSampahUsers")||"[]"); }
+function saveUsers(u) { localStorage.setItem("bankSampahUsers",JSON.stringify(u)); }
 
-// ========== FUNGSI UTAMA ==========
-function getDistance(lat1,lng1,lat2,lng2) {
-    const R=6371; const dLat=(lat2-lat1)*Math.PI/180; const dLng=(lng2-lng1)*Math.PI/180;
-    const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
-    return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+let trackingMap, heroMap, miniMap, miniMarker;
+let currentFilterBank = "all", userLatBank=null, userLngBank=null;
+let currentKomFilter = "all", userLatKom=null, userLngKom=null;
+let currentFilterLap = "semua";
+
+function getDistance(lat1,lng1,lat2,lng2){ const R=6371; const dLat=(lat2-lat1)*Math.PI/180; const dLng=(lng2-lng1)*Math.PI/180; const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2; return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)); }
+
+// ===== UPDATE UI FILTER TRACKING =====
+function updateFilterBankUI(activeFilter) {
+    const allBtn = document.getElementById('filterAll');
+    const threeRBtn = document.getElementById('filter3r');
+    const nearestBtn = document.getElementById('filterNearest');
+    if (allBtn && threeRBtn && nearestBtn) {
+        allBtn.classList.remove('active');
+        threeRBtn.classList.remove('active');
+        nearestBtn.classList.remove('active');
+        if (activeFilter === 'all') allBtn.classList.add('active');
+        else if (activeFilter === '3r') threeRBtn.classList.add('active');
+        else if (activeFilter === 'nearest') nearestBtn.classList.add('active');
+    }
 }
 
 function flyToBank(bankId) {
@@ -90,7 +93,6 @@ function flyToBank(bankId) {
         });
     }
 }
-
 function deleteBank(bankId) {
     if(!currentUser || currentUser.role !== 'admin') return alert("Hanya admin yang dapat menghapus bank sampah");
     const bank = allBanks.find(b=>b.id===bankId);
@@ -101,7 +103,6 @@ function deleteBank(bankId) {
     refreshTracking();
     alert("Bank sampah berhasil dihapus");
 }
-
 function deleteKomunitas(komId) {
     if(!currentUser || currentUser.role !== 'admin') return alert("Hanya admin yang dapat menghapus komunitas");
     komunitasList = komunitasList.filter(k=>k.id!==komId);
@@ -109,54 +110,24 @@ function deleteKomunitas(komId) {
     renderKomunitas();
     alert("Komunitas dihapus");
 }
-
-// ========== RENDER BANK LIST ==========
 function renderBankList() {
     let filtered = [...allBanks];
     const search = document.getElementById('searchBankInput')?.value || '';
     if(search) filtered = filtered.filter(b=>b.name.toLowerCase().includes(search.toLowerCase()));
     const filterVal = currentFilterBank;
     if(filterVal === "3r") filtered = filtered.filter(b=>b.is3RActive);
-    else if(filterVal === "nearest" && userLatBank && userLngBank) filtered.sort((a,b)=>getDistance(userLatBank,userLngBank,a.lat,a.lng)-getDistance(userLatBank,userLngBank,b.lat,b.lng));
+    else if(filterVal === "nearest" && userLatBank !== null && userLngBank !== null) {
+        filtered.sort((a,b)=>getDistance(userLatBank,userLngBank,a.lat,a.lng)-getDistance(userLatBank,userLngBank,b.lat,b.lng));
+    }
     const container = document.getElementById('bankListContainer');
     if(!container) return;
     if(filtered.length===0) { container.innerHTML='<div class="text-center py-8 text-gray-400">Tidak ada bank</div>'; return; }
     const isAdmin = currentUser && currentUser.role === 'admin';
     container.innerHTML = filtered.map(b=>{
-        const deleteBtn = (isAdmin && b.isCustom) ? `<button onclick="deleteBank(${b.id})" class="text-red-500 text-xs ml-2"><i class="fas fa-trash-alt"></i></button>` : '';
-        return `<div class="bank-card"><div class="flex-between"><h3>${b.name} ${b.isCustom?'<span class="text-xs bg-gray-200 px-1 rounded">user</span>':''} ${deleteBtn}</h3>${b.is3RActive?'<span class="badge-3r">3R Aktif</span>':''}</div><p class="text-sm text-gray-500">${b.address}</p><div class="flex-between mt-2"><span class="text-sm font-semibold" style="color:var(--kuning);">${b.tonPerMonth} Ton/bln</span><div class="action-buttons"><button onclick="openKondisiModalById(${b.id})" class="btn-detail">Detail</button><button onclick="flyToBank(${b.id})" class="btn-map"><i class="fas fa-map-marker-alt"></i> Tampilkan Peta</button></div></div></div>`;
+        const deleteBtn = (isAdmin && b.isCustom) ? `<button onclick="deleteBank(${b.id})" class="text-red-500 text-xs ml-2 hover:text-red-700"><i class="fas fa-trash-alt"></i></button>` : '';
+        return `<div class="bank-card p-4"><div class="flex justify-between items-start"><h3 class="font-bold">${b.name} ${b.isCustom?'<span class="text-xs bg-gray-200 px-1 rounded">user</span>':''} ${deleteBtn}</h3>${b.is3RActive?'<span class="text-xs bg-green-100 p-1 rounded">3R</span>':''}</div><p class="text-sm">${b.address}</p><div class="flex justify-between items-center mt-2"><span class="text-sm font-semibold" style="color:var(--kuning);">${b.tonPerMonth} Ton/bln</span><div class="flex gap-2"><button onclick="openKondisiModalById(${b.id})" class="text-xs border px-2 py-1 rounded">Detail</button><button onclick="flyToBank(${b.id})" class="text-xs bg-[#798645] text-white px-2 py-1 rounded"><i class="fas fa-map-marker-alt mr-1"></i> Tampilkan Peta</button></div></div></div>`;
     }).join('');
 }
-
-function openKondisiModalById(id) {
-    const bank = allBanks.find(b=>b.id===id);
-    if(bank){
-        document.getElementById('modalKondisiContent').innerHTML = `<div><b>${bank.name}</b><p>${bank.address}</p><p>Tonase: ${bank.tonPerMonth} Ton</p><p>Status 3R: ${bank.is3RActive?'Aktif':'Tidak'}</p><p>${bank.deskripsi}</p></div>`;
-        document.getElementById('kondisiModal').classList.remove('hidden');
-    }
-}
-function closeKondisiModal() { document.getElementById('kondisiModal').classList.add('hidden'); }
-function closeTambahModal() { document.getElementById('tambahBankModal').classList.add('hidden'); }
-
-function submitTambahBank() {
-    if(!currentUser) { alert("Login dulu"); openAuthModal('login'); return; }
-    const name=document.getElementById('newBankName').value.trim(), addr=document.getElementById('newBankAddress').value.trim(), lat=parseFloat(document.getElementById('newBankLat').value), lng=parseFloat(document.getElementById('newBankLng').value), ton=parseFloat(document.getElementById('newBankTon').value), is3r=document.getElementById('newBank3r').checked;
-    if(!name||!addr||isNaN(lat)||isNaN(lng)||isNaN(ton)) alert("Isi semua");
-    else {
-        allBanks.push({id:nextBankId++, name, address:addr, lat, lng, tonPerMonth:ton, is3RActive:is3r, deskripsi:`Ditambahkan ${currentUser.name}`, isCustom:true});
-        saveAllData(); refreshTracking(); closeTambahModal(); alert("Bank tersimpan! Klik 'Tampilkan Peta' untuk melihat lokasinya.");
-    }
-}
-
-function refreshTracking() {
-    if(trackingMap){
-        trackingMap.eachLayer(l=>{if(l instanceof L.Marker) trackingMap.removeLayer(l);});
-        allBanks.forEach(b=>{const m=L.marker([b.lat,b.lng]).addTo(trackingMap); m.bindPopup(`<b>${b.name}</b><br>${b.address}<br><button onclick="flyToBank(${b.id})" class="bg-yellow-400 px-2 py-1 rounded mt-1">Zoom ke sini</button><br><button onclick="openKondisiModalById(${b.id})" class="bg-gray-200 px-2 py-1 rounded mt-1">Detail</button>`);});
-    }
-    renderBankList();
-}
-
-// ========== RENDER KOMUNITAS ==========
 function renderKomunitas() {
     let filtered = [...komunitasList];
     const search = document.getElementById('searchKomunitas')?.value.toLowerCase() || '';
@@ -168,7 +139,7 @@ function renderKomunitas() {
     const isAdmin = currentUser && currentUser.role === 'admin';
     container.innerHTML = filtered.map(k=>{
         const deleteBtn = isAdmin ? `<button onclick="deleteKomunitas(${k.id})" class="text-red-500 text-xs ml-2"><i class="fas fa-trash-alt"></i></button>` : '';
-        return `<div class="komunitas-card"><div class="flex-between"><h3>${k.name} ${deleteBtn}</h3><span class="text-xs ${k.aktif?'bg-green-100 text-green-700':'bg-gray-100'} px-2 py-0.5 rounded-full">${k.aktif?'Aktif':'Tidak Aktif'}</span></div><p class="text-sm">${k.address}</p><div class="flex-between mt-2 text-sm"><span>👥 ${k.anggota}</span><span>📅 ${k.kegiatanPerBulan}/bln</span></div><div class="flex gap-2 mt-2"><button class="text-xs border px-2 py-1 rounded" onclick="alert('Detail ${k.name}')">Lihat Detail</button><button class="text-xs bg-[#FEA405] px-2 py-1 rounded" onclick="alert('Bergabung dengan ${k.name}')">Gabung</button></div></div>`;
+        return `<div class="komunitas-card p-4"><div class="flex justify-between"><h3 class="font-bold">${k.name} ${deleteBtn}</h3><span class="text-xs ${k.aktif?'bg-green-100 text-green-700':'bg-gray-100'} px-2 rounded">${k.aktif?'Aktif':'Tidak Aktif'}</span></div><p class="text-sm">${k.address}</p><div class="flex justify-between mt-2 text-sm"><span>👥 ${k.anggota}</span><span>📅 ${k.kegiatanPerBulan}/bln</span></div><div class="flex gap-2 mt-2"><button class="text-xs border px-2 py-1 rounded" onclick="alert('Detail ${k.name}')">Lihat Detail</button><button class="text-xs bg-[#FEA405] px-2 py-1 rounded" onclick="alert('Bergabung dengan ${k.name}')">Gabung</button></div></div>`;
     }).join('');
     document.getElementById('statKomunitas').innerText = komunitasList.length;
     document.getElementById('statAnggota').innerHTML = komunitasList.reduce((s,k)=>s+k.anggota,0)+'+';
@@ -177,10 +148,8 @@ function renderKomunitas() {
 }
 function renderKegiatan() {
     const container = document.getElementById('kegiatanListContainer');
-    if(container) container.innerHTML = kegiatanList.map(kg=>`<div class="event-card"><div class="flex justify-between"><div><h4 class="font-semibold">${kg.title}</h4><p class="text-xs">${kg.date} | ${kg.komunitas}</p><p class="text-sm text-gray-600">${kg.desc}</p></div><button class="text-xs bg-[#798645] text-white px-2 py-1 rounded" onclick="alert('Ikut kegiatan ${kg.title}')">Ikut</button></div></div>`).join('');
+    if(container) container.innerHTML = kegiatanList.map(kg=>`<div class="event-card p-3"><div class="flex justify-between"><div><h4 class="font-semibold">${kg.title}</h4><p class="text-xs">${kg.date} | ${kg.komunitas}</p><p class="text-sm text-gray-600">${kg.desc}</p></div><button class="text-xs bg-[#798645] text-white px-2 py-1 rounded" onclick="alert('Ikut kegiatan ${kg.title}')">Ikut</button></div></div>`).join('');
 }
-
-// ========== RENDER LAPORAN ==========
 function renderLaporanList() {
     let filtered = [...laporanList];
     if(currentFilterLap !== "semua") filtered = filtered.filter(l=>l.status===currentFilterLap);
@@ -196,7 +165,7 @@ function renderLaporanList() {
         let statusBadge = l.status==='baru'?'bg-blue-100 text-blue-800':l.status==='diproses'?'bg-yellow-100 text-yellow-800':'bg-green-100 text-green-800';
         let statusText = l.status==='baru'?'Baru':l.status==='diproses'?'Diproses':'Selesai';
         const hasPhoto = l.fotoBase64 ? '<i class="fas fa-image text-blue-500 ml-1"></i>' : '';
-        return `<div class="laporan-card"><div class="flex-between"><h3>${l.judul} ${hasPhoto}</h3><span class="text-xs px-2 py-1 rounded-full ${statusBadge}">${statusText}</span></div><p class="text-sm text-gray-500">${l.lokasi}</p><div class="flex-between text-xs text-gray-400 mt-1"><span>${waktu}</span><span>${l.nama}</span></div><div class="flex justify-end mt-2"><button onclick="openDetailLaporan(${l.id})" class="text-xs border px-2 py-1 rounded">Lihat Detail</button></div></div>`;
+        return `<div class="laporan-card p-4"><div class="flex justify-between"><h3 class="font-bold">${l.judul} ${hasPhoto}</h3><span class="text-xs px-2 py-1 rounded-full ${statusBadge}">${statusText}</span></div><p class="text-sm text-gray-500">${l.lokasi}</p><div class="flex justify-between text-xs text-gray-400 mt-1"><span>${waktu}</span><span>${l.nama}</span></div><div class="flex justify-end mt-2"><button onclick="openDetailLaporan(${l.id})" class="text-xs border px-2 py-1 rounded">Lihat Detail</button></div></div>`;
     }).join('');
 }
 function openDetailLaporan(id) {
@@ -205,12 +174,12 @@ function openDetailLaporan(id) {
     const isAdmin = currentUser && currentUser.role === 'admin';
     let statusHtml = '';
     if(isAdmin) {
-        statusHtml = `<div><span class="font-bold">Status:</span> <select id="ubahStatusSelect"><option value="baru" ${lap.status==='baru'?'selected':''}>Baru/Masuk</option><option value="diproses" ${lap.status==='diproses'?'selected':''}>Diproses</option><option value="selesai" ${lap.status==='selesai'?'selected':''}>Selesai</option></select><button onclick="ubahStatusLaporan(${lap.id})">Update</button></div>`;
+        statusHtml = `<div><span class="font-bold">Status:</span> <select id="ubahStatusSelect" class="border rounded p-1 text-sm"><option value="baru" ${lap.status==='baru'?'selected':''}>Baru/Masuk</option><option value="diproses" ${lap.status==='diproses'?'selected':''}>Diproses</option><option value="selesai" ${lap.status==='selesai'?'selected':''}>Selesai</option></select><button onclick="ubahStatusLaporan(${lap.id})" class="ml-2 px-3 py-1 bg-green-600 text-white rounded text-xs">Update</button></div>`;
     } else {
-        statusHtml = `<div><span class="font-bold">Status:</span> <span>${lap.status==='baru'?'Baru':lap.status==='diproses'?'Diproses':'Selesai'}</span></div>`;
+        statusHtml = `<div><span class="font-bold">Status:</span> <span class="px-2 py-1 rounded-full text-xs ${lap.status==='baru'?'bg-blue-100':lap.status==='diproses'?'bg-yellow-100':'bg-green-100'}">${lap.status==='baru'?'Baru':lap.status==='diproses'?'Diproses':'Selesai'}</span></div>`;
     }
-    const fotoHtml = lap.fotoBase64 ? `<div><span class="font-bold">Foto Bukti:</span><br><img src="${lap.fotoBase64}" class="foto-preview"></div>` : '<div class="text-gray-400">Tidak ada foto</div>';
-    const content = `<div><div><span class="font-bold">Pelapor:</span> ${lap.nama}</div><div><span class="font-bold">Lokasi:</span> ${lap.lokasi}</div><div><span class="font-bold">Jenis Sampah:</span> ${lap.jenisSampah}</div><div><span class="font-bold">Deskripsi:</span> <p>${lap.deskripsi}</p></div>${fotoHtml}${statusHtml}<div><span class="font-bold">Tanggal Lapor:</span> ${new Date(lap.tanggal).toLocaleString()}</div></div>`;
+    const fotoHtml = lap.fotoBase64 ? `<div><span class="font-bold">Foto Bukti:</span><br><img src="${lap.fotoBase64}" class="foto-preview max-h-40"></div>` : '<div class="text-gray-400">Tidak ada foto</div>';
+    const content = `<div class="space-y-3"><div><span class="font-bold">Pelapor:</span> ${lap.nama}</div><div><span class="font-bold">Lokasi:</span> ${lap.lokasi}</div><div><span class="font-bold">Jenis Sampah:</span> ${lap.jenisSampah}</div><div><span class="font-bold">Deskripsi:</span> <p class="text-sm">${lap.deskripsi}</p></div>${fotoHtml}${statusHtml}<div><span class="font-bold">Tanggal Lapor:</span> ${new Date(lap.tanggal).toLocaleString()}</div></div>`;
     document.getElementById('detailLaporanContent').innerHTML = content;
     document.getElementById('detailLaporanModal').classList.remove('hidden');
 }
@@ -224,16 +193,7 @@ function ubahStatusLaporan(id) {
 }
 function closeDetailLaporanModal() { document.getElementById('detailLaporanModal').classList.add('hidden'); }
 
-// Upload foto
-document.getElementById('laporFoto')?.addEventListener('change', function(e) {
-    const file = e.target.files[0];
-    if(file && (file.type==='image/jpeg'||file.type==='image/png')) {
-        if(file.size>2*1024*1024) { alert("Maksimal 2MB"); this.value=''; currentFotoBase64=null; document.getElementById('previewFoto').innerHTML=''; return; }
-        const reader = new FileReader();
-        reader.onload = ev=>{ currentFotoBase64=ev.target.result; document.getElementById('previewFoto').innerHTML=`<img src="${currentFotoBase64}" class="foto-preview">`; };
-        reader.readAsDataURL(file);
-    } else { alert("Format JPG/PNG"); this.value=''; currentFotoBase64=null; document.getElementById('previewFoto').innerHTML=''; }
-});
+let currentFotoBase64 = null;
 function kirimLaporan() {
     const nama = document.getElementById('laporNama').value.trim();
     const lokasi = document.getElementById('laporLokasi').value.trim();
@@ -257,9 +217,32 @@ function kirimLaporan() {
     alert("Laporan terkirim!");
 }
 
-// ========== AUTH ==========
-function getUsers() { return JSON.parse(localStorage.getItem("bankSampahUsers")||"[]"); }
-function saveUsers(u) { localStorage.setItem("bankSampahUsers",JSON.stringify(u)); }
+function refreshTracking() { if(trackingMap){ trackingMap.eachLayer(l=>{if(l instanceof L.Marker) trackingMap.removeLayer(l);}); allBanks.forEach(b=>{const m=L.marker([b.lat,b.lng]).addTo(trackingMap); m.bindPopup(`<b>${b.name}</b><br>${b.address}<br><button onclick="flyToBank(${b.id})" class="bg-yellow-400 px-2 py-1 rounded mt-1">Zoom ke sini</button><br><button onclick="openKondisiModalById(${b.id})" class="bg-gray-200 px-2 py-1 rounded mt-1">Detail</button>`);}); } renderBankList(); }
+function openKondisiModalById(id){ const bank=allBanks.find(b=>b.id===id); if(bank){ document.getElementById('modalKondisiContent').innerHTML=`<div><b>${bank.name}</b><p>${bank.address}</p><p>Tonase: ${bank.tonPerMonth} Ton</p><p>Status 3R: ${bank.is3RActive?'Aktif':'Tidak'}</p><p>${bank.deskripsi}</p></div>`; document.getElementById('kondisiModal').classList.remove('hidden'); } }
+function closeKondisiModal(){ document.getElementById('kondisiModal').classList.add('hidden'); }
+function closeTambahModal(){ document.getElementById('tambahBankModal').classList.add('hidden'); }
+function submitTambahBank(){
+    if(!currentUser) { alert("Login dulu"); openAuthModal('login'); return; }
+    const name=document.getElementById('newBankName').value.trim(), addr=document.getElementById('newBankAddress').value.trim(), lat=parseFloat(document.getElementById('newBankLat').value), lng=parseFloat(document.getElementById('newBankLng').value), ton=parseFloat(document.getElementById('newBankTon').value), is3r=document.getElementById('newBank3r').checked;
+    if(!name||!addr||isNaN(lat)||isNaN(lng)||isNaN(ton)) alert("Isi semua"); else {
+        allBanks.push({id:nextBankId++, name, address:addr, lat, lng, tonPerMonth:ton, is3RActive:is3r, deskripsi:`Ditambahkan ${currentUser.name}`, isCustom:true});
+        saveAllData(); refreshTracking(); closeTambahModal(); alert("Bank tersimpan! Klik 'Tampilkan Peta' untuk melihat lokasinya.");
+    }
+}
+function initTrackingMap() { if(trackingMap) trackingMap.remove(); const c=document.getElementById('trackingMainMap'); if(c){ trackingMap=L.map('trackingMainMap').setView([3.5952,98.6722],13); L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png').addTo(trackingMap); allBanks.forEach(b=>{const m=L.marker([b.lat,b.lng]).addTo(trackingMap); m.bindPopup(`<b>${b.name}</b><br>${b.address}<br><button onclick="flyToBank(${b.id})" class="bg-yellow-400 px-2 py-1 rounded mt-1">Zoom ke sini</button><br><button onclick="openKondisiModalById(${b.id})" class="bg-gray-200 px-2 py-1 rounded mt-1">Detail</button>`);}); } }
+function initHeroMapStatic() { if(heroMap) heroMap.remove(); const d=document.getElementById('heroMap'); if(d){ heroMap=L.map('heroMap').setView([3.5952,98.6722],13); L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png').addTo(heroMap); defaultBanks.forEach(b=>{L.marker([b.lat,b.lng]).addTo(heroMap).bindPopup(b.name);}); } }
+function initMiniMap() { const c=document.getElementById('miniMap'); if(c && !miniMap){ miniMap=L.map('miniMap').setView([3.5952,98.6722],13); L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png').addTo(miniMap); miniMarker=L.marker([3.5952,98.6722],{draggable:true}).addTo(miniMap); miniMarker.on('dragend',()=>{const p=miniMarker.getLatLng(); document.getElementById('laporLat').value=p.lat; document.getElementById('laporLng').value=p.lng;}); miniMap.on('click',e=>{miniMarker.setLatLng(e.latlng); document.getElementById('laporLat').value=e.latlng.lat; document.getElementById('laporLng').value=e.latlng.lng;}); } }
+
+function showPage(pageId){
+    document.querySelectorAll('.page-content').forEach(p=>p.classList.add('hidden'));
+    document.getElementById(`${pageId}-page`).classList.remove('hidden');
+    window.scrollTo(0,0);
+    if(pageId==='tracking'){ setTimeout(()=>{ if(trackingMap) trackingMap.invalidateSize(); else initTrackingMap(); renderBankList(); },100); }
+    if(pageId==='komunitas'){ renderKomunitas(); renderKegiatan(); }
+    if(pageId==='laporan'){ if(miniMap) miniMap.invalidateSize(); else initMiniMap(); renderLaporanList(); }
+}
+function closeMobileMenu(){ document.getElementById('mobileMenu').classList.add('hidden'); }
+
 function handleRegister() {
     let name=document.getElementById('regName').value.trim(), email=document.getElementById('regEmail').value.trim(), pwd=document.getElementById('regPassword').value.trim();
     if(!name||!email||!pwd) return alert("Isi semua"); if(pwd.length<6) return alert("Min 6 karakter");
@@ -296,58 +279,12 @@ function updateNavAuthDisplay() {
 function openAuthModal(tab){ document.getElementById('authModal').classList.remove('hidden'); switchAuthTab(tab); }
 function closeAuthModal(){ document.getElementById('authModal').classList.add('hidden'); }
 function switchAuthTab(tab){
-    const loginForm=document.getElementById('loginForm'), regForm=document.getElementById('registerForm'), tabLogin=document.getElementById('tabLoginBtn'), tabReg=document.getElementById('tabRegisterBtn');
-    if(tab==='login'){
-        loginForm.classList.remove('hidden'); regForm.classList.add('hidden');
-        tabLogin.classList.add('active'); tabReg.classList.remove('active');
-    } else {
-        loginForm.classList.add('hidden'); regForm.classList.remove('hidden');
-        tabReg.classList.add('active'); tabLogin.classList.remove('active');
-    }
+    let loginForm=document.getElementById('loginForm'), regForm=document.getElementById('registerForm'), tabLogin=document.getElementById('tabLoginBtn'), tabReg=document.getElementById('tabRegisterBtn');
+    if(tab==='login'){ loginForm.classList.remove('hidden'); regForm.classList.add('hidden'); tabLogin.style.borderBottom='3px solid var(--kuning)'; tabLogin.style.color='var(--hijau-gelap)'; tabReg.style.borderBottom='none'; tabReg.style.color='gray'; }
+    else { loginForm.classList.add('hidden'); regForm.classList.remove('hidden'); tabReg.style.borderBottom='3px solid var(--kuning)'; tabReg.style.color='var(--hijau-gelap)'; tabLogin.style.borderBottom='none'; tabLogin.style.color='gray'; }
 }
+function updateFilterLapUI(active) { document.querySelectorAll('[data-filter-lap]').forEach(c=>c.classList.remove('active')); if(active==='semua') document.getElementById('filterLapSemua').classList.add('active'); else if(active==='baru') document.getElementById('filterLapBaru').classList.add('active'); else if(active==='diproses') document.getElementById('filterLapDiproses').classList.add('active'); else if(active==='selesai') document.getElementById('filterLapSelesai').classList.add('active'); }
 
-// ========== MAPS ==========
-function initHeroMapStatic() {
-    if(heroMap) heroMap.remove();
-    const d=document.getElementById('heroMap');
-    if(d){
-        heroMap=L.map('heroMap').setView([3.5952,98.6722],13);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png').addTo(heroMap);
-        defaultBanks.forEach(b=>{L.marker([b.lat,b.lng]).addTo(heroMap).bindPopup(b.name);});
-    }
-}
-function initTrackingMap() {
-    if(trackingMap) trackingMap.remove();
-    const c=document.getElementById('trackingMainMap');
-    if(c){
-        trackingMap=L.map('trackingMainMap').setView([3.5952,98.6722],13);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png').addTo(trackingMap);
-        allBanks.forEach(b=>{const m=L.marker([b.lat,b.lng]).addTo(trackingMap); m.bindPopup(`<b>${b.name}</b><br>${b.address}<br><button onclick="flyToBank(${b.id})" class="bg-yellow-400 px-2 py-1 rounded mt-1">Zoom ke sini</button><br><button onclick="openKondisiModalById(${b.id})" class="bg-gray-200 px-2 py-1 rounded mt-1">Detail</button>`);});
-    }
-}
-function initMiniMap() {
-    const c=document.getElementById('miniMap');
-    if(c && !miniMap){
-        miniMap=L.map('miniMap').setView([3.5952,98.6722],13);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png').addTo(miniMap);
-        miniMarker=L.marker([3.5952,98.6722],{draggable:true}).addTo(miniMap);
-        miniMarker.on('dragend',()=>{const p=miniMarker.getLatLng(); document.getElementById('laporLat').value=p.lat; document.getElementById('laporLng').value=p.lng;});
-        miniMap.on('click',e=>{miniMarker.setLatLng(e.latlng); document.getElementById('laporLat').value=e.latlng.lat; document.getElementById('laporLng').value=e.latlng.lng;});
-    }
-}
-
-// ========== PAGE NAVIGATION ==========
-function showPage(pageId){
-    document.querySelectorAll('.page-content').forEach(p=>p.classList.add('hidden'));
-    document.getElementById(`${pageId}-page`).classList.remove('hidden');
-    window.scrollTo(0,0);
-    if(pageId==='tracking'){ setTimeout(()=>{ if(trackingMap) trackingMap.invalidateSize(); else initTrackingMap(); renderBankList(); },100); }
-    if(pageId==='komunitas'){ renderKomunitas(); renderKegiatan(); }
-    if(pageId==='laporan'){ if(miniMap) miniMap.invalidateSize(); else initMiniMap(); renderLaporanList(); }
-}
-function closeMobileMenu(){ document.getElementById('mobileMenu').classList.add('hidden'); }
-
-// ========== EVENT LISTENERS ==========
 document.addEventListener('DOMContentLoaded',()=>{
     loadData();
     const saved = localStorage.getItem("bankSampahCurrentUser");
@@ -361,12 +298,59 @@ document.addEventListener('DOMContentLoaded',()=>{
     initMiniMap();
     document.getElementById('menuBtn').addEventListener('click',()=>{document.getElementById('mobileMenu').classList.toggle('hidden');});
     document.getElementById('openTambahBtn')?.addEventListener('click',()=>{ if(!currentUser){ alert("Login dulu"); openAuthModal('login'); } else document.getElementById('tambahBankModal').classList.remove('hidden'); });
-    document.getElementById('filterAll')?.addEventListener('click',()=>{ currentFilterBank="all"; userLatBank=null; renderBankList(); });
-    document.getElementById('filter3r')?.addEventListener('click',()=>{ currentFilterBank="3r"; renderBankList(); });
-    document.getElementById('filterNearest')?.addEventListener('click',()=>{
-        if(navigator.geolocation) navigator.geolocation.getCurrentPosition(p=>{ userLatBank=p.coords.latitude; userLngBank=p.coords.longitude; currentFilterBank="nearest"; renderBankList(); if(trackingMap) trackingMap.setView([userLatBank,userLngBank],13); },()=>{ alert("Gagal lokasi"); currentFilterBank="nearest"; renderBankList(); });
-        else alert("Tidak support");
-    });
+    
+    // ========== PERBAIKAN FILTER TRACKING ==========
+    const filterAll = document.getElementById('filterAll');
+    const filter3r = document.getElementById('filter3r');
+    const filterNearest = document.getElementById('filterNearest');
+    
+    if (filterAll) {
+        filterAll.addEventListener('click', () => {
+            currentFilterBank = "all";
+            userLatBank = null;
+            userLngBank = null;
+            updateFilterBankUI('all');
+            renderBankList();
+        });
+    }
+    if (filter3r) {
+        filter3r.addEventListener('click', () => {
+            currentFilterBank = "3r";
+            updateFilterBankUI('3r');
+            renderBankList();
+        });
+    }
+    if (filterNearest) {
+        filterNearest.addEventListener('click', () => {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        userLatBank = position.coords.latitude;
+                        userLngBank = position.coords.longitude;
+                        currentFilterBank = "nearest";
+                        updateFilterBankUI('nearest');
+                        renderBankList();
+                        // Pindahkan peta ke lokasi pengguna
+                        if (trackingMap) trackingMap.setView([userLatBank, userLngBank], 13);
+                    },
+                    (error) => {
+                        console.error("Geolocation error:", error);
+                        alert("Tidak dapat mengakses lokasi. Filter 'Terdekat' tidak dapat mengurutkan.");
+                        // Tetap set filter tapi tanpa sorting karena userLatBank null
+                        currentFilterBank = "nearest";
+                        updateFilterBankUI('nearest');
+                        renderBankList(); // tetap menampilkan semua karena userLatBank null
+                    }
+                );
+            } else {
+                alert("Browser Anda tidak mendukung geolokasi.");
+                currentFilterBank = "nearest";
+                updateFilterBankUI('nearest');
+                renderBankList();
+            }
+        });
+    }
+    
     document.getElementById('searchBankInput')?.addEventListener('input',()=>renderBankList());
     document.getElementById('filterLapSemua')?.addEventListener('click',()=>{ currentFilterLap="semua"; updateFilterLapUI("semua"); renderLaporanList(); });
     document.getElementById('filterLapBaru')?.addEventListener('click',()=>{ currentFilterLap="baru"; updateFilterLapUI("baru"); renderLaporanList(); });
@@ -374,16 +358,16 @@ document.addEventListener('DOMContentLoaded',()=>{
     document.getElementById('filterLapSelesai')?.addEventListener('click',()=>{ currentFilterLap="selesai"; updateFilterLapUI("selesai"); renderLaporanList(); });
     document.getElementById('komFilterAll')?.addEventListener('click',()=>{ currentKomFilter="all"; renderKomunitas(); });
     document.getElementById('komFilterAktif')?.addEventListener('click',()=>{ currentKomFilter="aktif"; renderKomunitas(); });
-    document.getElementById('komFilterTerdekat')?.addEventListener('click',()=>{
-        if(navigator.geolocation) navigator.geolocation.getCurrentPosition(p=>{ userLatKom=p.coords.latitude; userLngKom=p.coords.longitude; currentKomFilter="terdekat"; renderKomunitas(); },()=>{ alert("Gagal"); currentKomFilter="terdekat"; renderKomunitas(); });
-        else alert("Tidak support");
-    });
+    document.getElementById('komFilterTerdekat')?.addEventListener('click',()=>{ if(navigator.geolocation) navigator.geolocation.getCurrentPosition(p=>{ userLatKom=p.coords.latitude; userLngKom=p.coords.longitude; currentKomFilter="terdekat"; renderKomunitas(); },()=>{ alert("Gagal"); currentKomFilter="terdekat"; renderKomunitas(); }); else alert("Tidak support"); });
     document.getElementById('searchKomunitas')?.addEventListener('input',()=>renderKomunitas());
 });
-function updateFilterLapUI(active) {
-    document.querySelectorAll('[data-filter-lap]').forEach(c=>c.classList.remove('active'));
-    if(active==='semua') document.getElementById('filterLapSemua').classList.add('active');
-    else if(active==='baru') document.getElementById('filterLapBaru').classList.add('active');
-    else if(active==='diproses') document.getElementById('filterLapDiproses').classList.add('active');
-    else if(active==='selesai') document.getElementById('filterLapSelesai').classList.add('active');
-}
+
+document.getElementById('laporFoto')?.addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if(file && (file.type==='image/jpeg'||file.type==='image/png')) {
+        if(file.size>2*1024*1024) { alert("Maksimal 2MB"); this.value=''; currentFotoBase64=null; document.getElementById('previewFoto').innerHTML=''; return; }
+        const reader = new FileReader();
+        reader.onload = ev=>{ currentFotoBase64=ev.target.result; document.getElementById('previewFoto').innerHTML=`<img src="${currentFotoBase64}" class="foto-preview">`; };
+        reader.readAsDataURL(file);
+    } else { alert("Format JPG/PNG"); this.value=''; currentFotoBase64=null; document.getElementById('previewFoto').innerHTML=''; }
+});
