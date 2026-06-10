@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Bank Sampah Medan | Admin & User</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Font Awesome & Leaflet & Chart.js -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="script.js" defer></script>
+</head>
+<body>
+
+    <!-- NAVBAR -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <i class="fas fa-leaf"></i>
+                <span>BankSampah<span>Medan</span></span>
+            </div>
+            <div class="nav-links">
+                <a href="#" onclick="showPage('beranda')">Beranda</a>
+                <a href="#" onclick="showPage('tracking')">Tracking Tempat Sampah</a>
+                <a href="#" onclick="showPage('laporan')">Pelaporan</a>
+                <a href="#" onclick="showPage('komunitas')">Komunitas</a>
+                <div class="auth-buttons">
+                    <span id="adminBadgeDesktop" class="admin-badge hidden">Admin</span>
+                    <button id="loginBtnDesktop" onclick="openAuthModal('login')">Masuk</button>
+                    <button id="logoutBtnDesktop" onclick="handleLogout()" class="hidden">Keluar</button>
+                </div>
+            </div>
+            <button id="menuBtn" class="mobile-menu-btn"><i class="fas fa-bars"></i></button>
+        </div>
+        <div id="mobileMenu" class="mobile-menu hidden">
+            <a href="#" onclick="showPage('beranda'); closeMobileMenu()">Beranda</a>
+            <a href="#" onclick="showPage('tracking'); closeMobileMenu()">Tracking Tempat Sampah</a>
+            <a href="#" onclick="showPage('laporan'); closeMobileMenu()">Pelaporan</a>
+            <a href="#" onclick="showPage('komunitas'); closeMobileMenu()">Komunitas</a>
+            <div class="mobile-auth">
+                <span id="adminBadgeMobile" class="admin-badge hidden">Admin</span>
+                <button onclick="openAuthModal('login'); closeMobileMenu()" id="mobileLoginBtn">Masuk</button>
+                <button onclick="handleLogout(); closeMobileMenu()" id="mobileLogoutBtn" class="hidden">Keluar</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- MODAL LOGIN/DAFTAR -->
+    <div id="authModal" class="modal hidden">
+        <div class="modal-content">
+            <button onclick="closeAuthModal()" class="modal-close"><i class="fas fa-times"></i></button>
+            <div class="auth-tabs">
+                <button id="tabLoginBtn" onclick="switchAuthTab('login')" class="active">Masuk</button>
+                <button id="tabRegisterBtn" onclick="switchAuthTab('register')">Daftar</button>
+            </div>
+            <div id="loginForm" class="auth-form">
+                <input type="email" id="loginEmail" placeholder="Email">
+                <input type="password" id="loginPassword" placeholder="Kata Sandi">
+                <button onclick="handleLogin()">MASUK</button>
+                <p class="admin-note">Admin: admin@gmail.com / 2468</p>
+            </div>
+            <div id="registerForm" class="auth-form hidden">
+                <input type="text" id="regName" placeholder="Nama Lengkap">
+                <input type="email" id="regEmail" placeholder="Email">
+                <input type="password" id="regPassword" placeholder="Kata Sandi (min 6)">
+                <button onclick="handleRegister()">DAFTAR</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL KONDISI BANK -->
+    <div id="kondisiModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">Detail Kondisi</div>
+            <div id="modalKondisiContent"></div>
+            <button onclick="closeKondisiModal()" class="modal-footer-btn">Tutup</button>
+        </div>
+    </div>
+
+    <!-- MODAL TAMBAH BANK -->
+    <div id="tambahBankModal" class="modal hidden">
+        <div class="modal-content">
+            <button onclick="closeTambahModal()" class="modal-close"><i class="fas fa-times"></i></button>
+            <h3>Tambah Bank Sampah Baru</h3>
+            <div class="form-group">
+                <input type="text" id="newBankName" placeholder="Nama Bank Sampah">
+                <input type="text" id="newBankAddress" placeholder="Alamat lengkap">
+                <div class="row-2">
+                    <input type="number" id="newBankLat" step="any" placeholder="Latitude">
+                    <input type="number" id="newBankLng" step="any" placeholder="Longitude">
+                </div>
+                <input type="number" id="newBankTon" step="0.1" placeholder="Tonase per bulan">
+                <label><input type="checkbox" id="newBank3r"> Bank 3R Aktif</label>
+                <button onclick="submitTambahBank()">Simpan Bank Sampah</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DETAIL LAPORAN -->
+    <div id="detailLaporanModal" class="modal hidden">
+        <div class="modal-content">
+            <button onclick="closeDetailLaporanModal()" class="modal-close"><i class="fas fa-times"></i></button>
+            <h3>Detail Laporan</h3>
+            <div id="detailLaporanContent"></div>
+        </div>
+    </div>
+
+    <main class="main-container">
+        <!-- BERANDA -->
+        <div id="beranda-page" class="page-content">
+            <div class="hero-grid">
+                <div class="hero-text">
+                    <h1>Tracking Bank Sampah & Program 3R Medan</h1>
+                    <p>Lacak bank sampah terdekat, kelola sampah dengan prinsip Reduce, Reuse, Recycle. Wujudkan Medan Zero Waste.</p>
+                    <button onclick="document.getElementById('bank-section').scrollIntoView({behavior:'smooth'})" class="btn-primary">Cari Bank Sampah</button>
+                </div>
+                <div><div id="heroMap" class="hero-map"></div><p class="map-caption">*Klik marker untuk detail lokasi</p></div>
+            </div>
+            <div class="stats-grid">
+                <div class="stats-card"><div class="stats-number">45</div><div>Bank Sampah Aktif</div></div>
+                <div class="stats-card"><div class="stats-number gold">12.5 Ton</div><div>Sampah Didaur Ulang</div><div class="stats-sub">Per bulan (Maret 2026)</div></div>
+                <div class="stats-card"><div class="stats-number dark">3,200+</div><div>Anggota 3R</div></div>
+            </div>
+            <div class="two-col" id="bank-section">
+                <div><h2><i class="fas fa-map-pin"></i> Bank Sampah Terdekat</h2><div class="bank-list-preview"><div class="bank-item"><i class="fas fa-location-dot"></i><div><strong>Bank Sampah Induk Medan</strong><p>Jl. Gatot Subroto No. 28, Medan Petisah</p></div></div><div class="bank-item"><i class="fas fa-location-dot"></i><div><strong>TPS 3R Marelan</strong><p>Komplek TPA Terjun, Medan Marelan</p></div></div></div><button onclick="showPage('tracking')" class="btn-outline">Lihat Semua Lokasi</button></div>
+                <div><h2><i class="fas fa-recycle"></i> Program 3R</h2><div class="program-card"><div class="program-item"><i class="fas fa-trash-alt"></i><span>Reduce</span></div><div class="program-item"><i class="fas fa-box-open"></i><span>Reuse</span></div><div class="program-item"><i class="fas fa-leaf"></i><span>Recycle</span></div><button class="btn-primary">Pelajari 3R</button></div></div>
+            </div>
+            <div class="smart-city"><i class="fas fa-microchip"></i><h3>Smart City Kota Medan</h3><p>Teknologi untuk kota yang lebih bersih.</p></div>
+        </div>
+
+        <!-- TRACKING -->
+        <div id="tracking-page" class="page-content hidden">
+            <div class="tracking-grid">
+                <div class="map-col">
+                    <div class="map-card"><div class="map-header"><i class="fas fa-map-marked-alt"></i> Lokasi Bank Sampah</div><div id="trackingMainMap" class="tracking-map"></div></div>
+                    <p class="map-caption">Klik marker untuk info | Klik "Tampilkan Peta" pada daftar bank</p>
+                </div>
+                <div class="list-col">
+                    <div class="list-header"><h2><i class="fas fa-trash-alt"></i> Daftar Bank Sampah</h2><button id="openTambahBtn" class="btn-add">+ Tambah Bank Sampah</button></div>
+                    <div class="search-box"><i class="fas fa-search"></i><input type="text" id="searchBankInput" placeholder="Cari bank sampah..."></div>
+                    <div class="filter-chips"><button data-filter="all" class="filter-chip active" id="filterAll">Semua</button><button data-filter="3r" class="filter-chip" id="filter3r">3R Aktif</button><button data-filter="nearest" class="filter-chip" id="filterNearest">Terdekat</button></div>
+                    <div id="bankListContainer" class="bank-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- LAPORAN -->
+        <div id="laporan-page" class="page-content hidden">
+            <div class="laporan-grid">
+                <div class="form-card">
+                    <h2><i class="fas fa-flag"></i> Form Pelaporan Sampah</h2>
+                    <div class="form-group">
+                        <input type="text" id="laporNama" placeholder="Nama Pelapor">
+                        <input type="text" id="laporLokasi" placeholder="Lokasi (Alamat)">
+                        <select id="laporJenis"><option>Sampah Rumah Tangga</option><option>Sampah Plastik</option><option>Sampah Organik</option><option>Limbah B3</option><option>Campuran</option></select>
+                        <textarea id="laporDeskripsi" rows="3" placeholder="Deskripsi..."></textarea>
+                        <label>Upload Foto (opsional)</label><input type="file" id="laporFoto" accept="image/jpeg,image/png,image/jpg"><div id="previewFoto" class="preview"></div>
+                        <label>Pilih Lokasi di Peta</label><div id="miniMap" class="mini-map"></div><input type="hidden" id="laporLat" value="3.5952"><input type="hidden" id="laporLng" value="98.6722">
+                        <button onclick="kirimLaporan()">Kirim Laporan</button>
+                    </div>
+                </div>
+                <div class="list-card">
+                    <h2><i class="fas fa-list"></i> Daftar Laporan Masuk</h2>
+                    <div class="filter-chips"><button data-filter-lap="semua" class="filter-chip active">Semua</button><button data-filter-lap="baru" class="filter-chip">Masuk</button><button data-filter-lap="diproses" class="filter-chip">Diproses</button><button data-filter-lap="selesai" class="filter-chip">Selesai</button></div>
+                    <div class="stats-row"><div><span id="statTotal">0</span><span>Laporan Masuk</span></div><div><span id="statDiproses">0</span><span>Diproses</span></div><div><span id="statSelesai">0</span><span>Selesai</span></div></div>
+                    <div id="laporanListContainer" class="laporan-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- KOMUNITAS -->
+        <div id="komunitas-page" class="page-content hidden">
+            <div class="komunitas-header"><h1><i class="fas fa-users"></i> Komunitas Hijau Medan</h1><p>Bergabung dengan komunitas peduli lingkungan</p></div>
+            <div class="komunitas-controls"><div class="search-box"><i class="fas fa-search"></i><input type="text" id="searchKomunitas" placeholder="Cari komunitas..."></div><div class="filter-chips"><button data-komfilter="all" class="filter-chip active">Semua</button><button data-komfilter="aktif" class="filter-chip">Aktif</button><button data-komfilter="terdekat" class="filter-chip">Terdekat</button></div></div>
+            <div class="komunitas-grid"><div class="komunitas-list" id="komunitasListContainer"></div><div class="komunitas-sidebar"><div class="stats-komunitas"><div><span id="statKomunitas">0</span><span>Komunitas Aktif</span></div><div><span id="statAnggota">0</span><span>Total Anggota</span></div><div><span id="statKegiatan">0</span><span>Kegiatan Bulan Ini</span></div><div><span id="statSampah">0</span><span>Sampah Terkumpul</span></div></div><div class="kegiatan-card"><h3><i class="fas fa-calendar-alt"></i> Kegiatan Komunitas</h3><div id="kegiatanListContainer" class="kegiatan-list"></div></div></div></div>
+        </div>
+    </main>
+
+    <footer><div class="footer-content">© 2026 Bank Sampah Medan | Admin: admin@gmail.com / 2468</div></footer>
+</body>
+</html>
